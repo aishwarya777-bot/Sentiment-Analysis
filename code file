@@ -1,0 +1,157 @@
+from google.colab import drive
+drive.mount('/content/drive')
+
+pip install nltk
+
+import re
+import nltk
+from nltk.sentiment import SentimentIntensityAnalyzer
+import pandas as pd
+
+# Try to download the VADER lexicon (needed for SentimentIntensityAnalyzer).
+# The 'quiet=True' option suppresses verbose output during download.
+try:
+    nltk.download('vader_lexicon', quiet=True)
+except Exception as e:
+    # If something goes wrong (e.g., no internet access), print the error message
+    print(f"Error downloading NLTK data: {e}")
+
+# Initialize the SentimentIntensityAnalyzer from NLTK's VADER tool
+# This will be used to score text (e.g., news, tweets, comments) for sentiment
+sia = SentimentIntensityAnalyzer()
+
+
+def advanced_preprocess_text(text: str) -> str:
+    """
+    Clean and normalize input text by removing links, mentions, hashtags,
+    special characters, and extra whitespace.
+    """
+    # 1. Remove URLs (anything starting with http, https, or www)
+    text = re.sub(r'http\S+|www\S+|https\S+', '', text)
+
+    # 2. Remove @mentions (e.g., @user) and hashtags (e.g., #happy)
+    text = re.sub(r'@\w+|#\w+', '', text)
+
+    # 3. Remove any character that is not:
+    #    - a letter (a–z, A–Z)
+    #    - a space
+    #    - or basic punctuation (. , ! ?)
+    text = re.sub(r'[^a-zA-Z\s\.\!\?\,]', '', text)
+
+    # 4. Convert text to lowercase, replace multiple spaces with a single space,
+    #    and strip leading/trailing spaces
+    return re.sub(r'\s+', ' ', text.lower()).strip()
+
+    def analyze_words_nltk(text: str, sia):
+    """
+    Perform word-level sentiment analysis using NLTK VADER.
+    Returns a list of dictionaries with word-level sentiment details.
+    """
+    # Preprocess text (cleaning) and split into individual words
+    words = advanced_preprocess_text(text).split()
+    results = []
+
+    # Loop through each word to analyze sentiment
+    for word in words:
+        # Get sentiment polarity scores from VADER
+        # Example: {'neg': 0.0, 'neu': 1.0, 'pos': 0.0, 'compound': 0.0}
+        score = sia.polarity_scores(word)
+
+        # Compound score ranges from -1 (very negative) to +1 (very positive)
+        compound = score['compound']
+
+        # Determine sentiment category based on compound score
+        if compound >= 0.05:
+            sentiment = 'POSITIVE'
+        elif compound <= -0.05:
+            sentiment = 'NEGATIVE'
+        else:
+            sentiment = 'NEUTRAL'
+
+        # Store results in a structured dictionary
+        results.append({
+            'word': word,  # the analyzed word
+            'scores': {
+                # Positive score (>= 0)
+                'POSITIVE': max(compound, 0),
+                # Negative score (>= 0, absolute value of negative compound)
+                'NEGATIVE': max(-compound, 0),
+                # Neutral score (higher when compound is close to 0)
+                'NEUTRAL': 1 - abs(compound)
+            },
+            'dominant_sentiment': sentiment,  # main sentiment label
+            'confidence': abs(compound)       # how strong the sentiment is
+        })
+
+    # Return list of sentiment analysis results for each word
+    return results
+
+    def prepare_sentiment_dataframe(results: list, min_confidence: float = 0.0) -> pd.DataFrame:
+    """
+    Convert sentiment analysis results into a pandas DataFrame,
+    filtering words by minimum confidence threshold.
+
+    Parameters:
+        results (list): A list of dictionaries containing sentiment analysis results.
+        min_confidence (float): Minimum confidence score required to include a word.
+
+    Returns:
+        pd.DataFrame: A table with word-level sentiment scores and metadata.
+    """
+
+    # Initialize an empty list to store cleaned/filtered sentiment data
+    table_data = []
+
+    # Iterate through all sentiment results
+    for r in results:
+        # Only include words with confidence >= the minimum threshold
+        if r['confidence'] >= min_confidence:
+            table_data.append({
+                'Word': r['word'],                               # The analyzed word
+                'Positive': f"{r['scores']['POSITIVE']:.3f}",    # Positive sentiment score
+                'Negative': f"{r['scores']['NEGATIVE']:.3f}",    # Negative sentiment score
+                'Neutral': f"{r['scores']['NEUTRAL']:.3f}",      # Neutral sentiment score
+                'Dominant': r['dominant_sentiment'],             # Label of strongest sentiment
+                'Confidence': f"{r['confidence']:.3f}"           # Confidence in classification
+            })
+
+    # Convert the processed list of dictionaries into a pandas DataFrame
+    return pd.DataFrame(table_data)
+
+
+def count_sentiments(results: list) -> dict:
+    """
+    Count the number of positive, negative, and neutral words in the results.
+
+    Parameters:
+        results (list): A list of dictionaries, where each dictionary contains
+                        sentiment analysis results for a word, including the
+                        'dominant_sentiment' key.
+
+    Returns:
+        dict: A dictionary with counts of POSITIVE, NEGATIVE, and NEUTRAL words.
+    """
+
+    # Initialize counters for each sentiment category
+    counts = {'POSITIVE': 0, 'NEGATIVE': 0, 'NEUTRAL': 0}
+
+    # Loop through each result in the input list
+    for r in results:
+        # Increment the counter for the dominant sentiment of the current word
+        counts[r['dominant_sentiment']] += 1
+
+    # Return the sentiment counts
+    return counts
+
+    # Word level sentiment analysis
+{'word': 'love', 'scores': {...}, 'dominant_sentiment': 'POSITIVE', 'confidence': 0.8}   # The word "love" is strongly positive with high confidence
+{'word': 'python', 'scores': {...}, 'dominant_sentiment': 'NEUTRAL', 'confidence': 0.0}  # The word "python" is neutral, no emotional weight
+{'word': 'bad', 'scores': {...}, 'dominant_sentiment': 'NEGATIVE', 'confidence': 0.7}    # The word "bad" shows negative sentiment with good confidence
+
+
+# Summery
+{'total_words': 10,
+ 'positive': {'count': 1, 'percent': 10},   # 1 word (10%) is positive
+ 'negative': {'count': 1, 'percent': 10},   # 1 word (10%) is negative
+ 'neutral': {'count': 8, 'percent': 80}     # 8 words (80%) are neutral
+}
